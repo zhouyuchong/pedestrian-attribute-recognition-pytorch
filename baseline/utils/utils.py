@@ -1,5 +1,5 @@
 import os
-import cPickle as pickle
+import pickle as pickle
 import datetime
 import time
 # from contextlib import contextmanger
@@ -94,8 +94,8 @@ class RecentAverageMeter(object):
         self.val = 0
 
     def update(self, value):
-        self.val = val
-        self.fifo.append(val)
+        self.val = value
+        self.fifo.append(value)
         if len(self.fifo) > self.hist_size:
             del self.fifo[0]
     @property
@@ -229,9 +229,8 @@ def load_state_dict(model, src_state_dict):
             param = param.data
         try:
             dest_state_dict[name].copy_(param)
-        except Exception, msg:
-            print("Warning: Error occurs when copying '{}': {}"
-                .format(name, str(msg)))
+        except Exception:
+            print("Warning: Error occurs when copying")
 
     src_missing = set(dest_state_dict.keys()) - set(src_state_dict.keys())
     if len(src_missing) > 0:

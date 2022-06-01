@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-python ./script/experiment/train_deepmar_resnet50.py \
-    --sys_device_ids="(0,)" \
-    --dataset=peta \
+python3 ./script/experiment/train_deepmar_resnet50.py \
+    --sys_device_ids="(0,1)" \
+    --dataset=rap2 \
     --partition_idx=0 \
     --split=trainval \
     --test_split=test \

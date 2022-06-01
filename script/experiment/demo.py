@@ -1,5 +1,8 @@
 import sys
 import os
+from traceback import print_stack
+sys.path.append(os.getcwd())
+
 import numpy as np
 import random
 import math
@@ -8,7 +11,7 @@ import torch
 import torchvision.transforms as transforms
 from torch.autograd import Variable
 from torch.nn.parallel import DataParallel
-import cPickle as pickle
+import pickle as pickle
 import time
 import argparse
 from PIL import Image, ImageFont, ImageDraw
@@ -31,10 +34,10 @@ class Config(object):
         parser.add_argument('--resize', type=eval, default=(224, 224))
         parser.add_argument('--last_conv_stride', type=int, default=2, choices=[1,2])
         # demo image
-        parser.add_argument('--demo_image', type=str, default='./dataset/demo/demo_image.png')
+        parser.add_argument('--demo_image', type=str, default='./dataset/demo/demo_image_00.png')
         ## dataset parameter
         parser.add_argument('--dataset', type=str, default='peta',
-                choices=['peta','rap', 'pa100k'])
+                choices=['peta','rap', 'pa100k', 'rap2'])
         # utils
         parser.add_argument('--load_model_weight', type=str2bool, default=True)
         parser.add_argument('--model_weight_file', type=str, default='./exp/deepmar_resnet50/peta/partition0/run1/model/ckpt_epoch150.pth')
@@ -58,18 +61,19 @@ class Config(object):
         self.model_weight_file = args.model_weight_file
         if self.load_model_weight:
             if self.model_weight_file == '':
-                print 'Please input the model_weight_file if you want to load model weight'
+                print ('Please input the model_weight_file if you want to load model weight')
                 raise ValueError
         # dataset 
         datasets = dict()
         datasets['peta'] = './dataset/peta/peta_dataset.pkl'
         datasets['rap'] = './dataset/rap/rap_dataset.pkl'
+        datasets['rap2'] = './dataset/rap2/rap2_dataset.pkl'
         datasets['pa100k'] = './dataset/pa100k/pa100k_dataset.pkl'
 
         if args.dataset in datasets:
-            dataset = pickle.load(open(datasets[args.dataset]))
+            dataset = pickle.load(open(datasets[args.dataset], 'rb'))
         else:
-            print '%s does not exist.'%(args.dataset)
+            print ('%s does not exist.'%(args.dataset))
             raise ValueError
         self.att_list = [dataset['att_name'][i] for i in dataset['selected_attribute']]
         
@@ -118,16 +122,20 @@ model.cuda()
 model.eval()
 
 # load one image 
-img = Image.open(cfg.demo_image)
+img = Image.open(cfg.demo_image).convert('RGB')
 img_trans = test_transform( img ) 
 img_trans = torch.unsqueeze(img_trans, dim=0)
 img_var = Variable(img_trans).cuda()
+s_time = time.time()
 score = model(img_var).data.cpu().numpy()
+e_time = time.time()
+print("time usage: ", (e_time - s_time))
 
 # show the score in command line
 for idx in range(len(cfg.att_list)):
+    #print("inded {} label {} score {}".format(idx, cfg.att_list[idx], score[0, idx]))
     if score[0, idx] >= 0:
-        print '%s: %.2f'%(cfg.att_list[idx], score[0, idx])
+        print ('%s: %.2f'%(cfg.att_list[idx], score[0, idx]))
 
 # show the score in the image
 img = img.resize(size=(256, 512), resample=Image.BILINEAR)
@@ -138,4 +146,5 @@ for idx in range(len(cfg.att_list)):
         txt = '%s: %.2f'%(cfg.att_list[idx], score[0, idx])
         draw.text((10, 10 + 10*positive_cnt), txt, (255, 0, 0))
         positive_cnt += 1
-img.save('./dataset/demo/demo_image_result.png')
+path = cfg.demo_image[:-4] + '_' + cfg.model_weight_file[-6:-4] + '_result.png'
+img.save(path)

@@ -23,6 +23,40 @@ from baseline.utils.utils import load_state_dict
 from baseline.utils.utils import set_devices
 from baseline.utils.utils import set_seed
 
+def export_onnx(model, im, file, opset=12, train=False, dynamic=False, simplify=True):
+    # ONNX export
+    try:
+        import onnx
+        f = file
+
+        torch.onnx.export(model, im, f, verbose=False, opset_version=opset,
+                          training=torch.onnx.TrainingMode.TRAINING if train else torch.onnx.TrainingMode.EVAL,
+                          do_constant_folding=not train,
+                          input_names=['input0'],
+                          output_names=['output0'],
+                          dynamic_axes={'input0': {0: 'batch', 2: 'height', 3: 'width'},  # shape(1,3,640,640)
+                                        'output0': {0: 'batch', 1: 'attrs'},  # shape(1,25200,85)
+                                        } if dynamic else None)
+
+        # Checks
+        model_onnx = onnx.load(f)  # load onnx model
+        onnx.checker.check_model(model_onnx)  # check onnx model
+
+        # Simplify
+        if simplify:
+            try:
+                import onnxsim
+
+                model_onnx, check = onnxsim.simplify(
+                    model_onnx,
+                    dynamic_input_shape=dynamic,
+                    input_shapes={'input0': list(im.shape)} if dynamic else None)
+                assert check, 'assert check failed'
+                onnx.save(model_onnx, f)
+            except Exception as e:
+                print("simplify failed \n{}".format(e))
+    except Exception as e:
+        print('onnx->trt failure: \n{}'.format(e))
 
 class Config(object):
     def __init__(self):
@@ -120,30 +154,9 @@ if cfg.load_model_weight:
 model.cuda()
 model.eval()
 
-# load one image 
-img = Image.open(cfg.demo_image).convert('RGB')
-img_trans = test_transform( img ) 
-img_trans = torch.unsqueeze(img_trans, dim=0)
-img_var = Variable(img_trans).cuda()
-s_time = time.time()
-score = model(img_var).data.cpu().numpy()
-e_time = time.time()
-print("time usage: ", (e_time - s_time))
+dummy_input = Variable(torch.randn(1, 3, 224, 224))
+dummy_input = dummy_input.to('cuda')
+# torch.onnx.export(model, dummy_input, "peta.onnx", opset_version = 12)
+export_onnx(model=model, im=dummy_input, file="peta.onnx", dynamic=True, simplify=True)
 
-# show the score in command line
-for idx in range(len(cfg.att_list)):
-    #print("inded {} label {} score {}".format(idx, cfg.att_list[idx], score[0, idx]))
-    if score[0, idx] >= 0:
-        print ('%s: %.2f'%(cfg.att_list[idx], score[0, idx]))
 
-# show the score in the image
-img = img.resize(size=(256, 512), resample=Image.BILINEAR)
-draw = ImageDraw.Draw(img)
-positive_cnt = 0
-for idx in range(len(cfg.att_list)):
-    if score[0, idx] >= 0:
-        txt = '%s: %.2f'%(cfg.att_list[idx], score[0, idx])
-        draw.text((10, 10 + 10*positive_cnt), txt, (255, 0, 0))
-        positive_cnt += 1
-path = cfg.demo_image[:-4] + '_' + cfg.model_weight_file[-6:-4] + '_result.png'
-img.save(path)
